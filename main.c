@@ -570,10 +570,73 @@ void print_member_information(member_t *member) {
 
 }
 
+/* Function Name: _confirm_change_information_helper_
+ * Description: the main loop of confirm change information
+ * Inputs: &member, &breakout
+ * Output: void
+ */
+static void _confirm_change_information_helper_ (member_t* member, int* breakout)
+{
+	while (1) {
+		printf("Press enter to continue or choose a field: ");
+		char c = getsinglechar(stdin);
+		if ((c & 0x5F) == 'L') {
+			*member->lname = 0;
+			while(!*member->lname) {
+				char buf[maxcharlen];
+				if (!query_lname(buf, maxbuf))
+					*member->lname = '\0';
+				else
+					strcpy(member->lname, buf);
+			}
+			break;
+		}
+		if ((c & 0x5F) == 'F') {
+			*member->fname = 0;
+			while(!*member->fname) {
+				char buf[maxcharlen];
+				if (!query_fname(buf, maxbuf))
+					*member->fname = '\0';
+				else
+					strcpy(member->fname, buf);
+			}
+			break;
+		}
+		if ((c & 0x5F) == 'E') {
+			*member->email = 0;
+			while(!*member->email) {
+				char buf[maxcharlen];
+				if (!query_email(buf, maxbuf))
+					*member->email = '\0';
+				else
+					strcpy(member->email, buf);
+			}
+			break;
+		}
+		if ((c & 0x5F) == 'I') {
+			member->imn = 0;
+			if (!member->imn) {
+				char buf[maxcharlen];
+				if(!query_imn(buf, maxbuf))
+					member->imn = 0;
+				else
+					member->imn = atoll(buf);
+			}
+			break;
+		}
+		if (c == '\n') {
+			*breakout = 1;
+			break;
+		}
+		printf("\033[9H");
+		printf("Invalid! ");
+	}
+}
+
 /* Function Name: confirm_change_information
  * Description: Confirm or change your information!
  * Inputs: &member
- * Output: int return condition
+ * Output: void
  */
 void confirm_change_information(member_t *member)
 {
@@ -581,60 +644,8 @@ void confirm_change_information(member_t *member)
 	while(!breakout) {
 		print_member_information(member);
 		printf("\033[1m(L,F,E,I)\033[0m \n");
-		while (1) {
-			printf("Press enter to continue or choose a field: ");
-			char c = getsinglechar(stdin);
-			if ((c & 0x5F) == 'L') {
-				*member->lname = 0;
-				while(!*member->lname) {
-					char buf[maxcharlen];
-					if (!query_lname(buf, maxbuf))
-						*member->lname = '\0';
-					else
-						strcpy(member->lname, buf);
-				}
-				break;
-			}
-			if ((c & 0x5F) == 'F') {
-				*member->fname = 0;
-				while(!*member->fname) {
-					char buf[maxcharlen];
-					if (!query_fname(buf, maxbuf))
-						*member->fname = '\0';
-					else
-						strcpy(member->fname, buf);
-				}
-				break;
-			}
-			if ((c & 0x5F) == 'E') {
-				*member->email = 0;
-				while(!*member->email) {
-					char buf[maxcharlen];
-					if (!query_email(buf, maxbuf))
-						*member->email = '\0';
-					else
-						strcpy(member->email, buf);
-				}
-				break;
-			}
-			if ((c & 0x5F) == 'I') {
-				member->imn = 0;
-				if (!member->imn) {
-					char buf[maxcharlen];
-					if(!query_imn(buf, maxbuf))
-						member->imn = 0;
-					else
-						member->imn = atoll(buf);
-				}
-				break;
-			}
-			if (c == '\n') {
-				breakout = 1;
-				break;
-			}
-			printf("\033[9H");
-			printf("Invalid! ");
-		}
+
+		_confirm_change_information_helper_(member, &breakout);
 
 	}
 }
