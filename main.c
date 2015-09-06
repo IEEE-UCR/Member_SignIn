@@ -21,6 +21,8 @@
 
 #define maxbuf 255
 #define maxcharlen 256
+#define maxquery
+#define maxquerylen 1000
 #define def_num_fields 6
 #define lname_row 0
 #define fname_row 1
@@ -46,6 +48,7 @@ typedef struct
 	unsigned int sid;
 	unsigned long long crd;
 	unsigned long long imn;
+	char admin;
 } member_t;
 
 /* Function Name: init_member
@@ -447,6 +450,33 @@ int sid_verify(member_t *member)
 	return 0;
 }
 
+/* Function Name: getsinglechar
+ * Description: gets a single character (without having to press enter)
+ * Inputs: nothing, really...
+ * Output: a character.
+ */
+char getsinglechar()
+{
+	fflush(stdout);
+
+	struct termios org_term_settings, new_term_settings;
+	tcgetattr(STDIN_FILENO, &org_term_settings);
+	new_term_settings = org_term_settings;
+	/* No echo, allow editing */
+	new_term_settings.c_lflag &= ~ECHO & ~ICANON;
+	new_term_settings.c_cc[VMIN] = 1;
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_term_settings);
+
+	char c;
+
+	read(STDIN_FILENO, &c, 1);
+
+	/* Reset terminal to its previous state */
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &org_term_settings);
+
+	return c;
+}
+
 /* Function Name: sid_correct
  * Description: asks the user if the SID is correct
  * Inputs: member_t
@@ -459,7 +489,7 @@ int sid_correct(member_t *member)
 	while (1) {
 		printf("Is your SID (%i) correct?. Y/n", member->sid);
 		char c;
-		c = getc(stdin);
+		c = getsinglechar();
 		if ((c & 0x5F) == 'Y') {
 			return 1;
 		}
@@ -570,7 +600,7 @@ int card_number_verification(unsigned long long nc, member_t *member)
 		while (1) {
 			printf("Do you want to update your stored card? Y/n");
 			char c;
-			c = getc(stdin);
+			c = getsinglechar(stdin);
 			if ((c & 0x5F) == 'Y') {
 				member->crd = nc;
 				return 0;
@@ -662,9 +692,7 @@ int confirm_change_information(member_t *member)
 		printf("\033[1m(L,F,E,I)\033[0m \n");
 		while (1) {
 			printf("Press enter to continue or choose a field: ");
-			char c = getc(stdin);
-			if (c != '\n')
-				while (getc(stdin) != '\n');
+			char c = getsinglechar(stdin);
 			if ((c & 0x5F) == 'L') {
 				*member->lname = 0;
 				while(!*member->lname) {
@@ -715,10 +743,44 @@ int confirm_change_information(member_t *member)
 			}
 			printf("\033[10H");
 			printf("Invalid! ");
-			while (getc(stdin) != '\n');
 		}
 
 	}
+}
+
+/* Function Name: _database_entry_helper_
+ * Description: parses the user information into a DB enterable form --
+ *     Does not input leading or trailing spaces.  (although they won't harm)
+ * Inputs: buffer, mysql connection, member_t
+ * Outputs: a character string
+ */
+static int _database_entry_helper_(char* buf, MYSQL *con, member_t *member)
+{
+	char* c = buf;
+
+	c = (char*) strmov(c, "lname='");
+	c += mysql_real_escape_string(con, c, member->lname,
+			strlen(member->lname));
+	c = (char*) strmov(c, "', fname='");
+	c += mysql_real_escape_string(con, c, member->fname,
+			strlen(member->fname));
+	c = (char*) strmov(c, "', email='");
+	c += mysql_real_escape_string(con, c, member->email,
+			strlen(member->email));
+	c = (char*) strmov(c, "', sid=");
+	c += sprintf(c, "%i", member->sid);
+	c = (char*) strmov(c, ", cn=");
+	if (member->crd)
+		c += sprintf(c, "%lli", member->crd);
+	else
+		c = (char*) strmov(c, "NULL");
+	c = (char*) strmov(c, ", ieeem=");
+	if (member->imn)
+		c += sprintf(c, "%lli", member->imn);
+	else
+		c = (char*) strmov(c, "NULL");
+	/* Just to make sure */
+	*(c++) = '\0';
 }
 
 /* Function Name: database_entry
@@ -728,52 +790,17 @@ int confirm_change_information(member_t *member)
  */
 int database_entry(MYSQL *con, member_t *member)
 {
-	char string[1000], *c;
+	char string[maxquerylen], *c, userinfo[maxquerylen];
 
-	c = (char*) strmov(string, "INSERT INTO member SET");
-	c = (char*) strmov(c, " lname='");
-	c += mysql_real_escape_string(con, c, member->lname,
-			strlen(member->lname));
-	c = (char*) strmov(c, "', fname='");
-	c += mysql_real_escape_string(con, c, member->fname,
-			strlen(member->fname));
-	c = (char*) strmov(c, "', email='");
-	c += mysql_real_escape_string(con, c, member->email,
-			strlen(member->email));
-	c = (char*) strmov(c, "', sid=");
-	c += sprintf(c, "%i", member->sid);
-	c = (char*) strmov(c, ", cn=");
-	if (member->crd)
-		c += sprintf(c, "%lli", member->crd);
-	else
-		c = (char*) strmov(c, "NULL");
-	c = (char*) strmov(c, ", ieeem=");
-	if (member->imn)
-		c += sprintf(c, "%lli", member->imn);
-	else
-		c = (char*) strmov(c, "NULL");
+	_database_entry_helper_(userinfo, con, member);
+
+	c = (char*) strmov(string, "INSERT INTO member SET ");
+
+	c = (char*) strmov(c, userinfo);
+
 	c = (char*) strmov(c, " ON DUPLICATE KEY UPDATE ");
-	c = (char*) strmov(c, " lname='");
-	c += mysql_real_escape_string(con, c, member->lname,
-			strlen(member->lname));
-	c = (char*) strmov(c, "', fname='");
-	c += mysql_real_escape_string(con, c, member->fname,
-			strlen(member->fname));
-	c = (char*) strmov(c, "', email='");
-	c += mysql_real_escape_string(con, c, member->email,
-			strlen(member->email));
-	c = (char*) strmov(c, "', sid=");
-	c += sprintf(c, "%i", member->sid);
-	c = (char*) strmov(c, ", cn=");
-	if (member->crd)
-		c += sprintf(c, "%lli", member->crd);
-	else
-		c = (char*) strmov(c, "NULL");
-	c = (char*) strmov(c, ", ieeem=");
-	if (member->imn)
-		c += sprintf(c, "%lli", member->imn);
-	else
-		c = (char*) strmov(c, "NULL");
+
+	c = (char*) strmov(c, userinfo);
 
 	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
 		finish_with_error(con);
