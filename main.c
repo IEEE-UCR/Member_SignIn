@@ -1,3 +1,12 @@
+/* Copyright (c) 2015, IEEE-UCR 
+ * You should have recieved a license bundled with this software.
+ */
+
+#define maxbuf 255
+#define maxcharlen 256
+#define maxquery
+#define maxquerylen 1000
+
 #include <unistd.h>
 #include <termios.h>
 #include <stdio.h>
@@ -7,10 +16,8 @@
 #include <sys/types.h>
 #include <string.h>
 #include <ctype.h>
-#include <my_global.h>
-#include <my_sys.h>
-#include <m_string.h>
-#include <mysql.h>
+#include "inc/sql.h"
+#include "inc/member.h"
 
 /* Card parsing is a bit weird.
  * Beginning from line one:
@@ -18,80 +25,6 @@
  * ignore this line
  * ignore this line too
  */
-
-#define maxbuf 255
-#define maxcharlen 256
-#define maxquery
-#define maxquerylen 1000
-#define def_num_fields 6
-#define lname_row 0
-#define fname_row 1
-#define email_row 2
-#define sid_row 3
-#define crd_row 4
-#define imn_row 5
-
-
-void finish_with_error(MYSQL *con)
-{
-	fprintf(stderr, "%s\n", mysql_error(con));
-	mysql_close(con);
-	exit(1);        
-}
-
-/* Struct Name: member */
-typedef struct
-{
-	char *lname;
-	char *fname;
-	char *email;
-	unsigned int sid;
-	unsigned long long crd;
-	unsigned long long imn;
-	char admin;
-} member_t;
-
-/* Function Name: init_member
- * Description: Initializes the "member" struct
- * Input: member_t pointer
- * Output: return status
- */
-int init_member(member_t *member)
-{
-	/* Allocate */
-	member->lname = (char*) malloc(maxcharlen);
-	member->fname = (char*) malloc(maxcharlen);
-	member->email = (char*) malloc(maxcharlen);
-
-	/* Zero */
-	*member->lname = '\0';
-	*member->fname = '\0';
-	*member->email = '\0';
-	member->sid = 0;
-	member->crd = 0;
-	member->imn = 0;
-
-	/* Check it */
-	if (!(member->lname))
-		return 1;
-
-	if (!(member->fname))
-		return 1;
-
-	if (!(member->email))
-		return 1; 
-
-	return 0;
-}
-
-int free_member(member_t *member)
-{
-	/* Deallocate */
-	free(member->lname);
-	free(member->fname);
-	free(member->email);
-}
-
 
 /* Funciton Name: read_card
  * Description: Reads your card for informaiton.  This function interfaces
@@ -462,13 +395,14 @@ char getsinglechar()
 	struct termios org_term_settings, new_term_settings;
 	tcgetattr(STDIN_FILENO, &org_term_settings);
 	new_term_settings = org_term_settings;
-	/* No echo, allow editing */
+	/* No echo, non-canonical mode with single character input */
 	new_term_settings.c_lflag &= ~ECHO & ~ICANON;
 	new_term_settings.c_cc[VMIN] = 1;
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_term_settings);
 
 	char c;
 
+	/* Read single character */
 	read(STDIN_FILENO, &c, 1);
 
 	/* Reset terminal to its previous state */
@@ -502,6 +436,8 @@ int sid_correct(member_t *member)
 		printf("\033[2H");
 		printf("Invalid! ");
 	}
+
+	return 0;
 }
 
 /* Function Name: information_gather
@@ -509,7 +445,7 @@ int sid_correct(member_t *member)
  * Inputs: member_t
  * Output: apparently an interger in case it encounters an error...
  */
-int information_gather(member_t *member, unsigned long long new_card)
+void information_gather(member_t *member, unsigned long long new_card)
 {
 	int try = 0;
 	do {
@@ -543,7 +479,7 @@ int information_gather(member_t *member, unsigned long long new_card)
  * Inputs: member_t
  * Outputs: return condition in case of error
  */
-int information_gather2(member_t *member)
+void information_gather2(member_t *member)
 {
 	while(!*member->lname) {
 		char buf[maxcharlen];
@@ -583,14 +519,14 @@ int information_gather2(member_t *member)
  * Inputs: new_card_number, member_t
  * Output: int return condition
  */
-int card_number_verification(unsigned long long nc, member_t *member)
+void card_number_verification(unsigned long long nc, member_t *member)
 {
 	if (!nc)
-		return 0;
+		return;
 
 	if (!member->crd) {
 		member->crd = nc;
-		return 0;
+		return;
 	}
 
 	if (nc != member->crd) {
@@ -603,59 +539,15 @@ int card_number_verification(unsigned long long nc, member_t *member)
 			c = getsinglechar(stdin);
 			if ((c & 0x5F) == 'Y') {
 				member->crd = nc;
-				return 0;
+				return;
 			}
 			if ((c & 0x5F) == 'N') {
-				return 0;
+				return;
 			}
 			printf("\033[2H");
 			printf("Invalid! ");
 		}
 	}
-}
-
-/* Function Name: database_check
- * Description: Checks database for this specific member.
- * Inputs: member, mysql connection
- * Output: int return condition
- */
-int database_check(MYSQL *con, member_t *member)
-{
-	char buf[256];
-	sprintf(buf,
-			"SELECT lname,fname,email,sid,cn,ieeem FROM member WHERE sid = %i;",
-			member->sid);
-	if (mysql_query(con, buf)) {
-		finish_with_error(con);
-	}
-
-	MYSQL_RES *result = mysql_store_result(con);
-
-	if (result == NULL) 
-	{
-		finish_with_error(con);
-	}
-
-	int num_fields = mysql_num_fields(result);
-
-	if (num_fields != def_num_fields) {
-		fprintf(stderr, "Not right field number!\n");
-		exit (1);
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-
-	if (!row)
-		return 0;
-
-	strcpy(member->lname, row[lname_row]);
-	strcpy(member->fname, row[fname_row]);
-	strcpy(member->email, row[email_row]);
-	member->sid = atoi(row[sid_row]);
-	member->crd = row[crd_row] ? atoll(row[crd_row]) : 0;
-	member->imn = row[imn_row] ? atoll(row[imn_row]) : 0;
-
-	return 0;
 }
 
 /* Function Name: print_member_information
@@ -683,12 +575,11 @@ void print_member_information(member_t *member) {
  * Inputs: &member
  * Output: int return condition
  */
-int confirm_change_information(member_t *member)
+void confirm_change_information(member_t *member)
 {
 	int breakout = 0;
 	while(!breakout) {
 		print_member_information(member);
-		printf("Choose the field you would like to change.\n");
 		printf("\033[1m(L,F,E,I)\033[0m \n");
 		while (1) {
 			printf("Press enter to continue or choose a field: ");
@@ -741,77 +632,16 @@ int confirm_change_information(member_t *member)
 				breakout = 1;
 				break;
 			}
-			printf("\033[10H");
+			printf("\033[9H");
 			printf("Invalid! ");
 		}
 
 	}
 }
 
-/* Function Name: _database_entry_helper_
- * Description: parses the user information into a DB enterable form --
- *     Does not input leading or trailing spaces.  (although they won't harm)
- * Inputs: buffer, mysql connection, member_t
- * Outputs: a character string
- */
-static int _database_entry_helper_(char* buf, MYSQL *con, member_t *member)
-{
-	char* c = buf;
-
-	c = (char*) strmov(c, "lname='");
-	c += mysql_real_escape_string(con, c, member->lname,
-			strlen(member->lname));
-	c = (char*) strmov(c, "', fname='");
-	c += mysql_real_escape_string(con, c, member->fname,
-			strlen(member->fname));
-	c = (char*) strmov(c, "', email='");
-	c += mysql_real_escape_string(con, c, member->email,
-			strlen(member->email));
-	c = (char*) strmov(c, "', sid=");
-	c += sprintf(c, "%i", member->sid);
-	c = (char*) strmov(c, ", cn=");
-	if (member->crd)
-		c += sprintf(c, "%lli", member->crd);
-	else
-		c = (char*) strmov(c, "NULL");
-	c = (char*) strmov(c, ", ieeem=");
-	if (member->imn)
-		c += sprintf(c, "%lli", member->imn);
-	else
-		c = (char*) strmov(c, "NULL");
-	/* Just to make sure */
-	*(c++) = '\0';
-}
-
-/* Function Name: database_entry
- * Description: Inputs the stuff into the database.
- * Inputs: mysql connection, member_t
- * Outputs: pretty much error conditions...
- */
-int database_entry(MYSQL *con, member_t *member)
-{
-	char string[maxquerylen], *c, userinfo[maxquerylen];
-
-	_database_entry_helper_(userinfo, con, member);
-
-	c = (char*) strmov(string, "INSERT INTO member SET ");
-
-	c = (char*) strmov(c, userinfo);
-
-	c = (char*) strmov(c, " ON DUPLICATE KEY UPDATE ");
-
-	c = (char*) strmov(c, userinfo);
-
-	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
-		finish_with_error(con);
-	}
-	
-	return 0;
-}
-
 int main()
 {
-	MYSQL *mysqlp;
+	MYSQL *mysqlp = 0;
 
 	if(!(mysqlp = mysql_init(mysqlp)))
 		exit(1);
