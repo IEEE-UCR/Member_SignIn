@@ -1,3 +1,21 @@
+/* Copyright (c) 2015, IEEE@UCR 
+ * You should have recieved a license bundled with this software.
+ */
+
+
+
+/* Mysql Configuration settings */
+#define csi_mysql_server "127.0.0.1"
+#define csi_mysql_user "bkluilkx_ieee"
+#define csi_mysql_password "uavRoom1227"
+#define csi_mysql_database "bkluilkx_ieee"
+#define csi_mysql_port 0
+#define csi_mysql_unix_socket NULL
+#define csi_mysql_client_flag 0
+
+#define maxbuf 256
+#define maxquerylen 1000
+
 #include <unistd.h>
 #include <termios.h>
 #include <stdio.h>
@@ -7,10 +25,10 @@
 #include <sys/types.h>
 #include <string.h>
 #include <ctype.h>
-#include <my_global.h>
-#include <my_sys.h>
-#include <m_string.h>
-#include <mysql.h>
+#include "inc/sql.h"
+#include "inc/member.h"
+
+char* mtg_description;
 
 /* Card parsing is a bit weird.
  * Beginning from line one:
@@ -19,90 +37,15 @@
  * ignore this line too
  */
 
-#define maxbuf 255
-#define maxcharlen 256
-#define maxquery
-#define maxquerylen 1000
-#define def_num_fields 6
-#define lname_row 0
-#define fname_row 1
-#define email_row 2
-#define sid_row 3
-#define crd_row 4
-#define imn_row 5
-
-
-void finish_with_error(MYSQL *con)
-{
-	fprintf(stderr, "%s\n", mysql_error(con));
-	mysql_close(con);
-	exit(1);        
-}
-
-/* Struct Name: member */
-typedef struct
-{
-	char *lname;
-	char *fname;
-	char *email;
-	unsigned int sid;
-	unsigned long long crd;
-	unsigned long long imn;
-	char admin;
-} member_t;
-
-/* Function Name: init_member
- * Description: Initializes the "member" struct
- * Input: member_t pointer
- * Output: return status
- */
-int init_member(member_t *member)
-{
-	/* Allocate */
-	member->lname = (char*) malloc(maxcharlen);
-	member->fname = (char*) malloc(maxcharlen);
-	member->email = (char*) malloc(maxcharlen);
-
-	/* Zero */
-	*member->lname = '\0';
-	*member->fname = '\0';
-	*member->email = '\0';
-	member->sid = 0;
-	member->crd = 0;
-	member->imn = 0;
-
-	/* Check it */
-	if (!(member->lname))
-		return 1;
-
-	if (!(member->fname))
-		return 1;
-
-	if (!(member->email))
-		return 1; 
-
-	return 0;
-}
-
-int free_member(member_t *member)
-{
-	/* Deallocate */
-	free(member->lname);
-	free(member->fname);
-	free(member->email);
-}
-
-
 /* Funciton Name: read_card
  * Description: Reads your card for informaiton.  This function interfaces
  * with the terminal directly and blocks out card information.  Since card
- * exits cannot be predicted by using newlines, the function uses a timeout
- * period using the select() function.
+ * endings cannot be predicted by using newlines, the function uses a timeout
+ * period using the select() function after the first line
  * Inputs: buffer
  * Outpts: size
- * TODO: change this function to do the things
  */
-ssize_t read_card(char* buf)
+ssize_t read_card(char* buf, ssize_t max)
 {
 	struct termios org_term_settings, new_term_settings;
 	tcgetattr(STDIN_FILENO, &org_term_settings);
@@ -114,7 +57,7 @@ ssize_t read_card(char* buf)
 
 	int size;
 
-	size = read(STDIN_FILENO, buf, 255);
+	size = read(STDIN_FILENO, buf, max-1);
 
 	/* select return variable */
 	int reading;
@@ -142,7 +85,7 @@ ssize_t read_card(char* buf)
 
 	} while (reading);
 
-	/* Reset terminal to its previous state */
+	/* Restore terminal to its previous state */
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &org_term_settings);
 
 	return size;
@@ -409,6 +352,31 @@ char *query_lname(char* buf, ssize_t sz)
 	return buf;
 }
 
+/* Function Name: query_mtg_description
+ * Description: Queries the admin for meeting information
+ * Inputs: buffer, size
+ * Outputs: no error conditions, strangely enough.
+ */
+char* query_mtg_description(char* buf, ssize_t sz)
+{
+	/* Screen Messages */
+	printf("\033[2J\033[H");
+	printf("IEEE@UCR Card Login System\n");
+	printf("Meeting description entry mode activated.\n");
+	printf("Meeting description: ");
+
+	if (!fgets(buf, sz, stdin))
+		exit(1);
+
+	char *c = buf;
+
+	while (*c++ != '\n');
+	
+	*(--c) = '\0';
+	
+	return buf;
+}
+
 /* Function Name: query_fname
  * Description: Queries the user for their last name
  * Inputs: buffer, size
@@ -462,13 +430,14 @@ char getsinglechar()
 	struct termios org_term_settings, new_term_settings;
 	tcgetattr(STDIN_FILENO, &org_term_settings);
 	new_term_settings = org_term_settings;
-	/* No echo, allow editing */
+	/* No echo, non-canonical mode with single character input */
 	new_term_settings.c_lflag &= ~ECHO & ~ICANON;
 	new_term_settings.c_cc[VMIN] = 1;
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_term_settings);
 
 	char c;
 
+	/* Read single character */
 	read(STDIN_FILENO, &c, 1);
 
 	/* Reset terminal to its previous state */
@@ -502,18 +471,20 @@ int sid_correct(member_t *member)
 		printf("\033[2H");
 		printf("Invalid! ");
 	}
+
+	return 0;
 }
 
 /* Function Name: information_gather
  * Description: Gathers user information for database retrieval.
  * Inputs: member_t
- * Output: apparently an interger in case it encounters an error...
+ * Output: nothing
  */
-int information_gather(member_t *member, unsigned long long new_card)
+void information_gather(member_t *member, unsigned long long new_card)
 {
 	int try = 0;
 	do {
-		char card_buf[maxcharlen];
+		char card_buf[maxbuf];
 		int sz;
 		printf("\033[2J\033[H");
 		printf("IEEE@UCR Card Login System\n");
@@ -524,11 +495,11 @@ int information_gather(member_t *member, unsigned long long new_card)
 		printf("enter for manual entry.\n> ");
 		fflush(stdout);
 
-		sz = read_card(card_buf);
+		sz = read_card(card_buf, maxbuf-1);
 
 		if (sz <= 1) {
-			char buf[maxcharlen];
-			query_sid(buf, maxcharlen);
+			char buf[maxbuf];
+			query_sid(buf, maxbuf);
 
 			member->sid = atoi(buf);
 		} else
@@ -541,40 +512,40 @@ int information_gather(member_t *member, unsigned long long new_card)
 /* Function Name: information_gather2
  * Description: Gathers missing user information for database update
  * Inputs: member_t
- * Outputs: return condition in case of error
+ * Outputs: nothing
  */
-int information_gather2(member_t *member)
+void information_gather2(member_t *member)
 {
 	while(!*member->lname) {
-		char buf[maxcharlen];
-		if (!query_lname(buf, maxbuf))
+		char buf[maxbuf];
+		if (!query_lname(buf, maxbuf-1))
 			*member->lname = '\0';
 		else
 			strcpy(member->lname, buf);
 	}
 
 	while(!*member->fname) {
-		char buf[maxcharlen];
-		if (!query_fname(buf, maxbuf))
+		char buf[maxbuf];
+		if (!query_fname(buf, maxbuf-1))
 			*member->fname = '\0';
 		else
 			strcpy(member->fname, buf);
 	}
 
 	while(!*member->email) {
-		char buf[maxcharlen];
-		if (!query_email(buf, maxbuf))
+		char buf[maxbuf];
+		if (!query_email(buf, maxbuf-1))
 			*member->email = '\0';
 		else
 			strcpy(member->email, buf);
 	}
 
-	if (!member->imn) {
-		char buf[maxcharlen];
-		if(!query_imn(buf, maxbuf))
-			member->imn = 0;
+	if (!member->mn) {
+		char buf[maxbuf];
+		if(!query_imn(buf, maxbuf-1))
+			member->mn = 0;
 		else
-			member->imn = atoll(buf);
+			member->mn = atoll(buf);
 	}
 }
 
@@ -583,14 +554,14 @@ int information_gather2(member_t *member)
  * Inputs: new_card_number, member_t
  * Output: int return condition
  */
-int card_number_verification(unsigned long long nc, member_t *member)
+void card_number_verification(unsigned long long nc, member_t *member)
 {
 	if (!nc)
-		return 0;
+		return;
 
 	if (!member->crd) {
 		member->crd = nc;
-		return 0;
+		return;
 	}
 
 	if (nc != member->crd) {
@@ -603,59 +574,15 @@ int card_number_verification(unsigned long long nc, member_t *member)
 			c = getsinglechar(stdin);
 			if ((c & 0x5F) == 'Y') {
 				member->crd = nc;
-				return 0;
+				return;
 			}
 			if ((c & 0x5F) == 'N') {
-				return 0;
+				return;
 			}
 			printf("\033[2H");
 			printf("Invalid! ");
 		}
 	}
-}
-
-/* Function Name: database_check
- * Description: Checks database for this specific member.
- * Inputs: member, mysql connection
- * Output: int return condition
- */
-int database_check(MYSQL *con, member_t *member)
-{
-	char buf[256];
-	sprintf(buf,
-			"SELECT lname,fname,email,sid,cn,ieeem FROM member WHERE sid = %i;",
-			member->sid);
-	if (mysql_query(con, buf)) {
-		finish_with_error(con);
-	}
-
-	MYSQL_RES *result = mysql_store_result(con);
-
-	if (result == NULL) 
-	{
-		finish_with_error(con);
-	}
-
-	int num_fields = mysql_num_fields(result);
-
-	if (num_fields != def_num_fields) {
-		fprintf(stderr, "Not right field number!\n");
-		exit (1);
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-
-	if (!row)
-		return 0;
-
-	strcpy(member->lname, row[lname_row]);
-	strcpy(member->fname, row[fname_row]);
-	strcpy(member->email, row[email_row]);
-	member->sid = atoi(row[sid_row]);
-	member->crd = row[crd_row] ? atoll(row[crd_row]) : 0;
-	member->imn = row[imn_row] ? atoll(row[imn_row]) : 0;
-
-	return 0;
 }
 
 /* Function Name: print_member_information
@@ -671,153 +598,113 @@ void print_member_information(member_t *member) {
 	printf("\033[1mF\033[0mirst Name: %s\n", member->fname);
 	printf("\033[1mE\033[0mmail: %s\n", member->email);
 	printf("SID: %i\n", member->sid);
-	if (member->imn)
-		printf("\033[1mI\033[0mEEE Member: %lli\n", member->imn);
+	if (member->mn)
+		printf("\033[1mI\033[0mEEE Member: %lli\n", member->mn);
 	else
 		printf("\033[1mI\033[0mEEE Member: Not an IEEE member yet\n");
 
 }
 
+/* Function Name: _confirm_change_information_helper_
+ * Description: the main loop of confirm change information
+ * Inputs: &member, &breakout
+ * Output: void
+ */
+static void _confirm_change_information_helper_ (member_t* member, int* breakout)
+{
+	while (1) {
+		printf("Press enter to continue or choose a field: ");
+		char c = getsinglechar(stdin);
+		if ((c & 0x5F) == 'L') {
+			*member->lname = 0;
+			while(!*member->lname) {
+				char buf[maxbuf];
+				if (!query_lname(buf, maxbuf-1))
+					*member->lname = '\0';
+				else
+					strcpy(member->lname, buf);
+			}
+			break;
+		}
+		if ((c & 0x5F) == 'F') {
+			*member->fname = 0;
+			while(!*member->fname) {
+				char buf[maxbuf];
+				if (!query_fname(buf, maxbuf-1))
+					*member->fname = '\0';
+				else
+					strcpy(member->fname, buf);
+			}
+			break;
+		}
+		if ((c & 0x5F) == 'E') {
+			*member->email = 0;
+			while(!*member->email) {
+				char buf[maxbuf];
+				if (!query_email(buf, maxbuf-1))
+					*member->email = '\0';
+				else
+					strcpy(member->email, buf);
+			}
+			break;
+		}
+		if ((c & 0x5F) == 'I') {
+			member->mn = 0;
+			if (!member->mn) {
+				char buf[maxbuf];
+				if(!query_imn(buf, maxbuf-1))
+					member->mn = 0;
+				else
+					member->mn = atoll(buf);
+			}
+			break;
+		}
+
+		if ((c & 0x5F) == 'A' && (member->admin & 0x5F) == 'Y') {
+			char buf[maxbuf];
+			query_mtg_description(buf, maxbuf-1);
+
+			strcpy(buf, mtg_description);
+			break;
+		}
+		if (c == '\n') {
+			*breakout = 1;
+			break;
+		}
+		printf("\033[9H");
+		printf("Invalid! ");
+	}
+}
+
 /* Function Name: confirm_change_information
  * Description: Confirm or change your information!
  * Inputs: &member
- * Output: int return condition
+ * Output: void
  */
-int confirm_change_information(member_t *member)
+void confirm_change_information(member_t *member)
 {
 	int breakout = 0;
 	while(!breakout) {
 		print_member_information(member);
-		printf("Choose the field you would like to change.\n");
 		printf("\033[1m(L,F,E,I)\033[0m \n");
-		while (1) {
-			printf("Press enter to continue or choose a field: ");
-			char c = getsinglechar(stdin);
-			if ((c & 0x5F) == 'L') {
-				*member->lname = 0;
-				while(!*member->lname) {
-					char buf[maxcharlen];
-					if (!query_lname(buf, maxbuf))
-						*member->lname = '\0';
-					else
-						strcpy(member->lname, buf);
-				}
-				break;
-			}
-			if ((c & 0x5F) == 'F') {
-				*member->fname = 0;
-				while(!*member->fname) {
-					char buf[maxcharlen];
-					if (!query_fname(buf, maxbuf))
-						*member->fname = '\0';
-					else
-						strcpy(member->fname, buf);
-				}
-				break;
-			}
-			if ((c & 0x5F) == 'E') {
-				*member->email = 0;
-				while(!*member->email) {
-					char buf[maxcharlen];
-					if (!query_email(buf, maxbuf))
-						*member->email = '\0';
-					else
-						strcpy(member->email, buf);
-				}
-				break;
-			}
-			if ((c & 0x5F) == 'I') {
-				member->imn = 0;
-				if (!member->imn) {
-					char buf[maxcharlen];
-					if(!query_imn(buf, maxbuf))
-						member->imn = 0;
-					else
-						member->imn = atoll(buf);
-				}
-				break;
-			}
-			if (c == '\n') {
-				breakout = 1;
-				break;
-			}
-			printf("\033[10H");
-			printf("Invalid! ");
-		}
+
+		_confirm_change_information_helper_(member, &breakout);
 
 	}
-}
-
-/* Function Name: _database_entry_helper_
- * Description: parses the user information into a DB enterable form --
- *     Does not input leading or trailing spaces.  (although they won't harm)
- * Inputs: buffer, mysql connection, member_t
- * Outputs: a character string
- */
-static int _database_entry_helper_(char* buf, MYSQL *con, member_t *member)
-{
-	char* c = buf;
-
-	c = (char*) strmov(c, "lname='");
-	c += mysql_real_escape_string(con, c, member->lname,
-			strlen(member->lname));
-	c = (char*) strmov(c, "', fname='");
-	c += mysql_real_escape_string(con, c, member->fname,
-			strlen(member->fname));
-	c = (char*) strmov(c, "', email='");
-	c += mysql_real_escape_string(con, c, member->email,
-			strlen(member->email));
-	c = (char*) strmov(c, "', sid=");
-	c += sprintf(c, "%i", member->sid);
-	c = (char*) strmov(c, ", cn=");
-	if (member->crd)
-		c += sprintf(c, "%lli", member->crd);
-	else
-		c = (char*) strmov(c, "NULL");
-	c = (char*) strmov(c, ", ieeem=");
-	if (member->imn)
-		c += sprintf(c, "%lli", member->imn);
-	else
-		c = (char*) strmov(c, "NULL");
-	/* Just to make sure */
-	*(c++) = '\0';
-}
-
-/* Function Name: database_entry
- * Description: Inputs the stuff into the database.
- * Inputs: mysql connection, member_t
- * Outputs: pretty much error conditions...
- */
-int database_entry(MYSQL *con, member_t *member)
-{
-	char string[maxquerylen], *c, userinfo[maxquerylen];
-
-	_database_entry_helper_(userinfo, con, member);
-
-	c = (char*) strmov(string, "INSERT INTO member SET ");
-
-	c = (char*) strmov(c, userinfo);
-
-	c = (char*) strmov(c, " ON DUPLICATE KEY UPDATE ");
-
-	c = (char*) strmov(c, userinfo);
-
-	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
-		finish_with_error(con);
-	}
-	
-	return 0;
 }
 
 int main()
 {
-	MYSQL *mysqlp;
+	MYSQL *mysqlp = 0;
+
+	mtg_description = malloc(maxbuf);
 
 	if(!(mysqlp = mysql_init(mysqlp)))
 		exit(1);
 
-	if (!mysql_real_connect(mysqlp, "127.0.0.1", "bkluilkx_ieee",
-				"uavRoom1227", "bkluilkx_ieee", 0, NULL, 0)) {
+	if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
+			csi_mysql_password, csi_mysql_database, csi_mysql_port,
+			csi_mysql_unix_socket, csi_mysql_client_flag)) {
 		finish_with_error(mysqlp);
 	}
 
@@ -843,6 +730,8 @@ int main()
 	}
 
 	mysql_close(mysqlp);
+
+	free(mtg_description);
 
 	return 0;
 }
