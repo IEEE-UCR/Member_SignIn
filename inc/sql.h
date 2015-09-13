@@ -9,6 +9,8 @@
 #include <string.h>
 #include "member.h"
 
+extern char* mtg_description;
+
 /* Function Name: finish_with_error
  * Description: finishes the program with a mysql error
  * Inputs: mysql connection pointer
@@ -22,7 +24,7 @@ void finish_with_error(MYSQL *con)
 }
 
 /* Function Name: _database_entry_helper_
- * Description: parses the user information into a DB enterable form --
+ * Description: concatenates the user information into a DB enterable form --
  *     Does not input leading or trailing spaces.  (although they won't harm)
  * Inputs: buffer, mysql connection, member_t
  * Outputs: a character string
@@ -47,9 +49,9 @@ static int _database_entry_helper_(char* buf, MYSQL *con, member_t *member)
 		c += sprintf(c, "%lli", member->crd);
 	else
 		c = (char*) strmov(c, "NULL");
-	c = (char*) strmov(c, ", ieeem=");
-	if (member->imn)
-		c += sprintf(c, "%lli", member->imn);
+	c = (char*) strmov(c, ", mn=");
+	if (member->mn)
+		c += sprintf(c, "%lli", member->mn);
 	else
 		c = (char*) strmov(c, "NULL");
 	/* Just to make sure */
@@ -80,6 +82,35 @@ int database_entry(MYSQL *con, member_t *member)
 	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
 		finish_with_error(con);
 	}
+
+	c = (char*) strmov(string, "INSERT INTO meeting SET ");
+
+	c = (char*) strmov(c, "meeting=CURDATE(), description='");
+
+	c += mysql_real_escape_string(con, c, mtg_description,
+		strlen(mtg_description));
+
+	c = (char*) strmov(c, "', attendees='");
+
+	c += sprintf(c, "%i", member->sid);
+
+	c = (char*) strmov(c, " '");
+
+	c = (char*) strmov(c, " ON DUPLICATE KEY UPDATE ");
+
+	c = (char*) strmov(c, "meeting=CURDATE(), description='");
+
+	c += mysql_real_escape_string(con, c, mtg_description,
+		strlen(mtg_description));
+
+	c = (char*) strmov(c, "', attendees=CONCAT(attendees, '");
+
+	c += sprintf(c, "%i", member->sid);
+
+	c = (char*) strmov(c, " ')");
+	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
+		finish_with_error(con);
+	}
 	
 	return 0;
 }
@@ -91,9 +122,9 @@ int database_entry(MYSQL *con, member_t *member)
  */
 int database_check(MYSQL *con, member_t *member)
 {
-	char buf[256];
+	char buf[maxbuf];
 	sprintf(buf,
-			"SELECT lname,fname,email,sid,cn,ieeem FROM member WHERE sid = %i;",
+			"SELECT lname,fname,email,sid,cn,mn,admin FROM member WHERE sid = %i;",
 			member->sid);
 	if (mysql_query(con, buf)) {
 		finish_with_error(con);
@@ -123,7 +154,8 @@ int database_check(MYSQL *con, member_t *member)
 	strcpy(member->email, row[email_row]);
 	member->sid = atoi(row[sid_row]);
 	member->crd = row[crd_row] ? atoll(row[crd_row]) : 0;
-	member->imn = row[imn_row] ? atoll(row[imn_row]) : 0;
+	member->mn = row[mn_row] ? atoll(row[mn_row]) : 0;
+	member->admin = row[admin_row] ? *row[admin_row] : 0;
 
 	return 0;
 }

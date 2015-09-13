@@ -1,10 +1,19 @@
-/* Copyright (c) 2015, IEEE-UCR 
+/* Copyright (c) 2015, IEEE@UCR 
  * You should have recieved a license bundled with this software.
  */
 
-#define maxbuf 255
-#define maxcharlen 256
-#define maxquery
+
+
+/* Mysql Configuration settings */
+#define csi_mysql_server "127.0.0.1"
+#define csi_mysql_user "bkluilkx_ieee"
+#define csi_mysql_password "uavRoom1227"
+#define csi_mysql_database "bkluilkx_ieee"
+#define csi_mysql_port 0
+#define csi_mysql_unix_socket NULL
+#define csi_mysql_client_flag 0
+
+#define maxbuf 256
 #define maxquerylen 1000
 
 #include <unistd.h>
@@ -19,6 +28,8 @@
 #include "inc/sql.h"
 #include "inc/member.h"
 
+char* mtg_description;
+
 /* Card parsing is a bit weird.
  * Beginning from line one:
  * %B<card number>^<last name>/<first name>  <all the spaces><numbers>
@@ -29,13 +40,12 @@
 /* Funciton Name: read_card
  * Description: Reads your card for informaiton.  This function interfaces
  * with the terminal directly and blocks out card information.  Since card
- * exits cannot be predicted by using newlines, the function uses a timeout
- * period using the select() function.
+ * endings cannot be predicted by using newlines, the function uses a timeout
+ * period using the select() function after the first line
  * Inputs: buffer
  * Outpts: size
- * TODO: change this function to do the things
  */
-ssize_t read_card(char* buf)
+ssize_t read_card(char* buf, ssize_t max)
 {
 	struct termios org_term_settings, new_term_settings;
 	tcgetattr(STDIN_FILENO, &org_term_settings);
@@ -47,7 +57,7 @@ ssize_t read_card(char* buf)
 
 	int size;
 
-	size = read(STDIN_FILENO, buf, 255);
+	size = read(STDIN_FILENO, buf, max-1);
 
 	/* select return variable */
 	int reading;
@@ -75,7 +85,7 @@ ssize_t read_card(char* buf)
 
 	} while (reading);
 
-	/* Reset terminal to its previous state */
+	/* Restore terminal to its previous state */
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &org_term_settings);
 
 	return size;
@@ -342,6 +352,31 @@ char *query_lname(char* buf, ssize_t sz)
 	return buf;
 }
 
+/* Function Name: query_mtg_description
+ * Description: Queries the admin for meeting information
+ * Inputs: buffer, size
+ * Outputs: no error conditions, strangely enough.
+ */
+char* query_mtg_description(char* buf, ssize_t sz)
+{
+	/* Screen Messages */
+	printf("\033[2J\033[H");
+	printf("IEEE@UCR Card Login System\n");
+	printf("Meeting description entry mode activated.\n");
+	printf("Meeting description: ");
+
+	if (!fgets(buf, sz, stdin))
+		exit(1);
+
+	char *c = buf;
+
+	while (*c++ != '\n');
+	
+	*(--c) = '\0';
+	
+	return buf;
+}
+
 /* Function Name: query_fname
  * Description: Queries the user for their last name
  * Inputs: buffer, size
@@ -443,13 +478,13 @@ int sid_correct(member_t *member)
 /* Function Name: information_gather
  * Description: Gathers user information for database retrieval.
  * Inputs: member_t
- * Output: apparently an interger in case it encounters an error...
+ * Output: nothing
  */
 void information_gather(member_t *member, unsigned long long new_card)
 {
 	int try = 0;
 	do {
-		char card_buf[maxcharlen];
+		char card_buf[maxbuf];
 		int sz;
 		printf("\033[2J\033[H");
 		printf("IEEE@UCR Card Login System\n");
@@ -460,11 +495,11 @@ void information_gather(member_t *member, unsigned long long new_card)
 		printf("enter for manual entry.\n> ");
 		fflush(stdout);
 
-		sz = read_card(card_buf);
+		sz = read_card(card_buf, maxbuf-1);
 
 		if (sz <= 1) {
-			char buf[maxcharlen];
-			query_sid(buf, maxcharlen);
+			char buf[maxbuf];
+			query_sid(buf, maxbuf);
 
 			member->sid = atoi(buf);
 		} else
@@ -477,40 +512,40 @@ void information_gather(member_t *member, unsigned long long new_card)
 /* Function Name: information_gather2
  * Description: Gathers missing user information for database update
  * Inputs: member_t
- * Outputs: return condition in case of error
+ * Outputs: nothing
  */
 void information_gather2(member_t *member)
 {
 	while(!*member->lname) {
-		char buf[maxcharlen];
-		if (!query_lname(buf, maxbuf))
+		char buf[maxbuf];
+		if (!query_lname(buf, maxbuf-1))
 			*member->lname = '\0';
 		else
 			strcpy(member->lname, buf);
 	}
 
 	while(!*member->fname) {
-		char buf[maxcharlen];
-		if (!query_fname(buf, maxbuf))
+		char buf[maxbuf];
+		if (!query_fname(buf, maxbuf-1))
 			*member->fname = '\0';
 		else
 			strcpy(member->fname, buf);
 	}
 
 	while(!*member->email) {
-		char buf[maxcharlen];
-		if (!query_email(buf, maxbuf))
+		char buf[maxbuf];
+		if (!query_email(buf, maxbuf-1))
 			*member->email = '\0';
 		else
 			strcpy(member->email, buf);
 	}
 
-	if (!member->imn) {
-		char buf[maxcharlen];
-		if(!query_imn(buf, maxbuf))
-			member->imn = 0;
+	if (!member->mn) {
+		char buf[maxbuf];
+		if(!query_imn(buf, maxbuf-1))
+			member->mn = 0;
 		else
-			member->imn = atoll(buf);
+			member->mn = atoll(buf);
 	}
 }
 
@@ -563,8 +598,8 @@ void print_member_information(member_t *member) {
 	printf("\033[1mF\033[0mirst Name: %s\n", member->fname);
 	printf("\033[1mE\033[0mmail: %s\n", member->email);
 	printf("SID: %i\n", member->sid);
-	if (member->imn)
-		printf("\033[1mI\033[0mEEE Member: %lli\n", member->imn);
+	if (member->mn)
+		printf("\033[1mI\033[0mEEE Member: %lli\n", member->mn);
 	else
 		printf("\033[1mI\033[0mEEE Member: Not an IEEE member yet\n");
 
@@ -583,8 +618,8 @@ static void _confirm_change_information_helper_ (member_t* member, int* breakout
 		if ((c & 0x5F) == 'L') {
 			*member->lname = 0;
 			while(!*member->lname) {
-				char buf[maxcharlen];
-				if (!query_lname(buf, maxbuf))
+				char buf[maxbuf];
+				if (!query_lname(buf, maxbuf-1))
 					*member->lname = '\0';
 				else
 					strcpy(member->lname, buf);
@@ -594,8 +629,8 @@ static void _confirm_change_information_helper_ (member_t* member, int* breakout
 		if ((c & 0x5F) == 'F') {
 			*member->fname = 0;
 			while(!*member->fname) {
-				char buf[maxcharlen];
-				if (!query_fname(buf, maxbuf))
+				char buf[maxbuf];
+				if (!query_fname(buf, maxbuf-1))
 					*member->fname = '\0';
 				else
 					strcpy(member->fname, buf);
@@ -605,8 +640,8 @@ static void _confirm_change_information_helper_ (member_t* member, int* breakout
 		if ((c & 0x5F) == 'E') {
 			*member->email = 0;
 			while(!*member->email) {
-				char buf[maxcharlen];
-				if (!query_email(buf, maxbuf))
+				char buf[maxbuf];
+				if (!query_email(buf, maxbuf-1))
 					*member->email = '\0';
 				else
 					strcpy(member->email, buf);
@@ -614,14 +649,22 @@ static void _confirm_change_information_helper_ (member_t* member, int* breakout
 			break;
 		}
 		if ((c & 0x5F) == 'I') {
-			member->imn = 0;
-			if (!member->imn) {
-				char buf[maxcharlen];
-				if(!query_imn(buf, maxbuf))
-					member->imn = 0;
+			member->mn = 0;
+			if (!member->mn) {
+				char buf[maxbuf];
+				if(!query_imn(buf, maxbuf-1))
+					member->mn = 0;
 				else
-					member->imn = atoll(buf);
+					member->mn = atoll(buf);
 			}
+			break;
+		}
+
+		if ((c & 0x5F) == 'A' && (member->admin & 0x5F) == 'Y') {
+			char buf[maxbuf];
+			query_mtg_description(buf, maxbuf-1);
+
+			strcpy(buf, mtg_description);
 			break;
 		}
 		if (c == '\n') {
@@ -654,11 +697,14 @@ int main()
 {
 	MYSQL *mysqlp = 0;
 
+	mtg_description = malloc(maxbuf);
+
 	if(!(mysqlp = mysql_init(mysqlp)))
 		exit(1);
 
-	if (!mysql_real_connect(mysqlp, "127.0.0.1", "bkluilkx_ieee",
-				"uavRoom1227", "bkluilkx_ieee", 0, NULL, 0)) {
+	if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
+			csi_mysql_password, csi_mysql_database, csi_mysql_port,
+			csi_mysql_unix_socket, csi_mysql_client_flag)) {
 		finish_with_error(mysqlp);
 	}
 
@@ -684,6 +730,8 @@ int main()
 	}
 
 	mysql_close(mysqlp);
+
+	free(mtg_description);
 
 	return 0;
 }

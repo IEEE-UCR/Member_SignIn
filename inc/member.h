@@ -1,13 +1,13 @@
 #ifndef __IEEE_MEMBER__
 #define __IEEE_MEMBER__
 
-#define def_num_fields 6
+#define def_num_fields 7
 #define lname_row 0
 #define fname_row 1
 #define email_row 2
 #define sid_row 3
 #define crd_row 4
-#define imn_row 5
+#define mn_row 5
 #define admin_row 6
 
 /* Struct Name: member */
@@ -18,7 +18,7 @@ typedef struct
 	char *email;
 	unsigned int sid;
 	unsigned long long crd;
-	unsigned long long imn;
+	unsigned long long mn;
 	char admin;
 } member_t;
 
@@ -30,9 +30,9 @@ typedef struct
 int init_member(member_t *member)
 {
 	/* Allocate */
-	member->lname = (char*) malloc(maxcharlen);
-	member->fname = (char*) malloc(maxcharlen);
-	member->email = (char*) malloc(maxcharlen);
+	member->lname = (char*) malloc(maxbuf);
+	member->fname = (char*) malloc(maxbuf);
+	member->email = (char*) malloc(maxbuf);
 
 	/* Zero */
 	*member->lname = '\0';
@@ -40,7 +40,8 @@ int init_member(member_t *member)
 	*member->email = '\0';
 	member->sid = 0;
 	member->crd = 0;
-	member->imn = 0;
+	member->mn = 0;
+	member->admin = 0;
 
 	/* Check it */
 	if (!(member->lname))
