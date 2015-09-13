@@ -3,7 +3,6 @@
  */
 
 
-
 /* Mysql Configuration settings */
 #define csi_mysql_server "127.0.0.1"
 #define csi_mysql_user "bkluilkx_ieee"
@@ -12,6 +11,11 @@
 #define csi_mysql_port 0
 #define csi_mysql_unix_socket NULL
 #define csi_mysql_client_flag 0
+
+/* Display Configuration Settings */
+#define csi_row1_message "IEEE@UCR Card Login System\n"
+#define csi_org "IEEE"
+#define csi_org_a "an IEEE"
 
 #define maxbuf 256
 #define maxquerylen 1000
@@ -116,8 +120,8 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 	}
 
 	/* Card ID ends with a '^' and should always be sixteen characters*/
+    int cnind = 0;
 	while (1) {
-		static int cnind = 0;
 		/* Tries to find the next fmt character */
 		if (fmt[fmtind] == buf[bufind] && cnind == 16) {
 			alpha_cn[cnind] = '\0';
@@ -136,8 +140,8 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 
 	/* fmtind at three */
 	/* Parse last name */
+	int lnind = 0;
 	while (1) {
-		static int lnind = 0;
 		/* Tries to find the next fmt character */
 		if (fmt[fmtind] == buf[bufind]) {
 			alpha_ln[lnind] = '\0';
@@ -154,8 +158,8 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 
 	/* fmtind at four */
 	/* Parse first name */
+    int fnind = 0;
 	while(1) {
-		static int fnind = 0;
 		/* Try to find the next fmt character */
 		if (fmt[fmtind] == buf[bufind]) {
 			alpha_fn[fnind] = '\0';
@@ -188,8 +192,8 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 	/* fmtind is at the end of fmt */
 	/* Get the SID! */
 	int sid_count = 9;
+    int sidind = 0;
 	while (sid_count--) {
-		static int sidind = 0;
 		if (!isdigit(buf[bufind]))
 			return bufind;
 		else
@@ -200,6 +204,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 
 	/* Insert atoi-ish things here. */
 	member->sid = atoi(alpha_sid);
+    printf("%s", alpha_sid);
 	new_card = atoll(alpha_cn);
 
 	/* And we can ignore the rest of the card string. */
@@ -216,7 +221,7 @@ char *query_sid(char* buf, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	printf("Manual SID entry mode activated.\n");
 	printf("UCR SID: ");
 
@@ -232,7 +237,7 @@ char *query_sid(char* buf, ssize_t sz)
 }
 
 /* Function Name: query_imn
- * Description: Queries the user (with the same header) his/her IEEE member num
+ * Description: Queries the user (with the same header) his/her member num
  * Inputs: a buffer, the buffer's size
  * Outputs: NULL if something went wrong a character array if all is good
  */
@@ -240,9 +245,9 @@ char *query_imn(char* buf, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
-	printf("Manual IEEE member number entry mode activated.\n");
-	printf("IEEE Member Number (press enter if not applicable): ");
+	printf(csi_row1_message);
+	printf("Manual " csi_org " member number entry mode activated.\n");
+	printf( csi_org " Member Number (press enter if not applicable): ");
 
 	if(!fgets(buf, sz, stdin))
 		exit(1);
@@ -268,7 +273,7 @@ char *query_email(char* buf, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	printf("Manual email entry mode activated.\n");
 	printf("UCR email: ");
 
@@ -336,7 +341,7 @@ char *query_lname(char* buf, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	printf("Manual Last Name entry mode activated.\n");
 	printf("Last Name: ");
 
@@ -361,7 +366,7 @@ char* query_mtg_description(char* buf, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	printf("Meeting description entry mode activated.\n");
 	printf("Meeting description: ");
 
@@ -386,7 +391,7 @@ char *query_fname(char* buf, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	printf("Manual First Name entry mode activated.\n");
 	printf("First Name: ");
 
@@ -454,9 +459,10 @@ char getsinglechar()
 int sid_correct(member_t *member)
 {
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	while (1) {
-		printf("Is your SID (%i) correct?. Y/n", member->sid);
+		printf("Is your SID (%i) correct?. (\033[1mY\033[0m is default)"
+                " \033[1mY\033[0m/n", member->sid);
 		char c;
 		c = getsinglechar();
 		if ((c & 0x5F) == 'Y') {
@@ -487,7 +493,7 @@ void information_gather(member_t *member, unsigned long long new_card)
 		char card_buf[maxbuf];
 		int sz;
 		printf("\033[2J\033[H");
-		printf("IEEE@UCR Card Login System\n");
+		printf(csi_row1_message);
 		if (try) {
 			printf("Try again. %i\n", try);
 		}
@@ -506,6 +512,9 @@ void information_gather(member_t *member, unsigned long long new_card)
 			parse_card(member, card_buf, new_card);
 
 		try++;
+
+        printf("%s", card_buf);
+        printf("%i", member->sid);
 	} while (sid_verify(member) || (!sid_correct(member)));
 }
 
@@ -566,7 +575,7 @@ void card_number_verification(unsigned long long nc, member_t *member)
 
 	if (nc != member->crd) {
 		printf("\033[2J\033[H");
-		printf("IEEE@UCR Card Login System\n");
+		printf(csi_row1_message);
 		printf("Scanned card does not match database.\n");
 		while (1) {
 			printf("Do you want to update your stored card? Y/n");
@@ -592,16 +601,16 @@ void card_number_verification(unsigned long long nc, member_t *member)
  */
 void print_member_information(member_t *member) {
 	printf("\033[2J\033[H");
-	printf("IEEE@UCR Card Login System\n");
+	printf(csi_row1_message);
 	printf("Confirm your information.\n");
 	printf("\033[1mL\033[0mast Name: %s\n", member->lname);
 	printf("\033[1mF\033[0mirst Name: %s\n", member->fname);
 	printf("\033[1mE\033[0mmail: %s\n", member->email);
 	printf("SID: %i\n", member->sid);
 	if (member->mn)
-		printf("\033[1mI\033[0mEEE Member: %lli\n", member->mn);
+		printf(csi_org " \033[1mM\033[0member: %lli\n", member->mn);
 	else
-		printf("\033[1mI\033[0mEEE Member: Not an IEEE member yet\n");
+		printf(csi_org " \033[1mM\033[0member: Not " csi_org_a " member yet\n");
 
 }
 
@@ -610,7 +619,8 @@ void print_member_information(member_t *member) {
  * Inputs: &member, &breakout
  * Output: void
  */
-static void _confirm_change_information_helper_ (member_t* member, int* breakout)
+static void _confirm_change_information_helper_ (member_t* member,
+        int* breakout)
 {
 	while (1) {
 		printf("Press enter to continue or choose a field: ");
@@ -648,7 +658,7 @@ static void _confirm_change_information_helper_ (member_t* member, int* breakout
 			}
 			break;
 		}
-		if ((c & 0x5F) == 'I') {
+		if ((c & 0x5F) == 'M') {
 			member->mn = 0;
 			if (!member->mn) {
 				char buf[maxbuf];
@@ -659,12 +669,9 @@ static void _confirm_change_information_helper_ (member_t* member, int* breakout
 			}
 			break;
 		}
-
 		if ((c & 0x5F) == 'A' && (member->admin & 0x5F) == 'Y') {
-			char buf[maxbuf];
-			query_mtg_description(buf, maxbuf-1);
+			query_mtg_description(mtg_description, maxbuf-1);
 
-			strcpy(buf, mtg_description);
 			break;
 		}
 		if (c == '\n') {
@@ -686,7 +693,7 @@ void confirm_change_information(member_t *member)
 	int breakout = 0;
 	while(!breakout) {
 		print_member_information(member);
-		printf("\033[1m(L,F,E,I)\033[0m \n");
+		printf("\033[1m(L,F,E,M)\033[0m \n");
 
 		_confirm_change_information_helper_(member, &breakout);
 
@@ -695,28 +702,28 @@ void confirm_change_information(member_t *member)
 
 int main()
 {
-	MYSQL *mysqlp = 0;
-
 	mtg_description = malloc(maxbuf);
-
-	if(!(mysqlp = mysql_init(mysqlp)))
-		exit(1);
-
-	if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
-			csi_mysql_password, csi_mysql_database, csi_mysql_port,
-			csi_mysql_unix_socket, csi_mysql_client_flag)) {
-		finish_with_error(mysqlp);
-	}
 
 	while (1) {
 		member_t member;
 		init_member(&member);
 
-		unsigned long long new_card = 0;
+        unsigned long long new_card = 0;
 
-		information_gather(&member, new_card);
+        information_gather(&member, new_card);
 
-		database_check(mysqlp, &member);
+        MYSQL *mysqlp = 0;
+
+        if(!(mysqlp = mysql_init(mysqlp)))
+            exit(1);
+
+        if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
+                    csi_mysql_password, csi_mysql_database, csi_mysql_port,
+                    csi_mysql_unix_socket, csi_mysql_client_flag)) {
+            finish_with_error(mysqlp);
+        }
+
+        database_check(mysqlp, &member);
 
 		information_gather2(&member);
 
@@ -726,10 +733,10 @@ int main()
 
 		database_entry(mysqlp, &member);
 
+	    mysql_close(mysqlp);
+
 		free_member(&member);
 	}
-
-	mysql_close(mysqlp);
 
 	free(mtg_description);
 
