@@ -150,7 +150,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 			break;
 		}
 
-		if (!isalpha(buf[bufind]))
+		if ((!isalpha(buf[bufind])) && buf[bufind] != ' ')
 			return bufind;
 
 		alpha_ln[lnind++] = buf[bufind++];
@@ -492,8 +492,12 @@ void information_gather(member_t *member, unsigned long long new_card)
 	do {
 		char card_buf[maxbuf];
 		int sz;
+#if DEBUG
+        int parse_error = -1;
+#else
 		printf("\033[2J\033[H");
-		printf(csi_row1_message);
+#endif
+        printf(csi_row1_message);
 		if (try) {
 			printf("Try again. %i\n", try);
 		}
@@ -509,12 +513,24 @@ void information_gather(member_t *member, unsigned long long new_card)
 
 			member->sid = atoi(buf);
 		} else
-			parse_card(member, card_buf, new_card);
+#if DEBUG
+			parse_error = 
+#endif                
+            parse_card(member, card_buf, new_card);
 
 		try++;
-
+        /* Debug output */
+#if DEBUG
         printf("%s", card_buf);
-        printf("%i", member->sid);
+        while (parse_error) {
+        printf("\n%i\n", member->sid);
+            if ((parse_error--) < 0)
+                break;
+            putchar(' ');
+        }
+        putchar('^');
+        printf("%i\n", member->sid);
+#endif
 	} while (sid_verify(member) || (!sid_correct(member)));
 }
 
@@ -712,6 +728,10 @@ int main()
 
         information_gather(&member, new_card);
 
+        printf("\033[2J\033[H");
+        printf(csi_row1_message);
+        printf("Connecting to SQL backend...\n");
+
         MYSQL *mysqlp = 0;
 
         if(!(mysqlp = mysql_init(mysqlp)))
@@ -730,6 +750,10 @@ int main()
 		card_number_verification(new_card, &member);
 
 		confirm_change_information(&member);
+
+        printf("\033[2J\033[H");
+        printf(csi_row1_message);
+        printf("Entering information into SQL backend...\n");
 
 		database_entry(mysqlp, &member);
 
