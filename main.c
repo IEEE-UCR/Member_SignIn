@@ -150,7 +150,11 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 			break;
 		}
 
+<<<<<<< Updated upstream
 		if (!isalpha(buf[bufind]))
+=======
+		if (!isalpha(buf[bufind]) && buf[bufind] != ' ')
+>>>>>>> Stashed changes
 			return bufind;
 
 		alpha_ln[lnind++] = buf[bufind++];

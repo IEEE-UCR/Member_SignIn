@@ -1,0 +1,134 @@
+% ============================================================================
+%  Copyright (c) 2015 IEEE@UCR
+%  Description: This is the LaTeX source for the documentation on ...
+%    Member_SignIn documentation.
+% ============================================================================
+\documentclass[12pt]{article}
+\usepackage[USenglish]{babel}
+\usepackage{parskip}
+\usepackage{fullpage}
+\usepackage{keystroke}
+\usepackage{hyperref}
+\usepackage{float}
+
+\floatstyle{boxed}
+\restylefloat{figure}
+
+\hypersetup{%
+	colorlinks=false,%
+	pdfborderstyle={/S/U/W 2}%
+}
+
+\begin{document}
+
+\title{IEEE@UCR Member\_SignIn}
+\author{Brandon Lu}
+\maketitle
+
+This document is written in order to provide some form of documentation for
+the IEEE@UCR Member\_SignIn system.  Although design rationale will be
+covered, please note that that is not the main purpose of this document,
+and that further details about implementation and a large amount of jokes
+can be ``bought over'' by treating the author to a meal.  He may also follow
+you home, so please be wise.
+
+Please note that this document is written in a ``backwards fashion'' with the 
+logic that it may be read from the most-used portion to the least used
+portion.
+
+Please also note that this document is probably going to be under active
+construction for a long, long time.
+\newpage
+
+\section{Operation}
+This section primarily details how to use the system.  If everything is set up
+correctly, it's pretty simple.
+	\subsection{Primary Authentication}
+\begin{figure}[h]
+{\tt IEEE@UCR Card Login System\\
+Please swipe your card or press enter for manual entry.\\
+> }
+\caption{Primary authentication mode.}
+\label{fig:pauth}
+\end{figure}
+Primary authentication can be completed in one of two ways.  An example of
+the screen that will be seen in this first mode is seen at Figure
+\ref{fig:pauth}.
+		\subsubsection{Card Swipe}
+Card swipe authentication is achieved by reading the input from stdin provided
+by a standard card reader on the student's ID.  Be sure your keyboard is set
+to ``us,'' this has become a problem in the past with administrators who have
+their keyboards set to something other than ``us.''
+
+The specifics can be found in the code if necessary, but it should not be
+necessary.
+		\subsubsection{Student ID Entry}
+Student ID entry is activated upon pressing the ``enter'' \Return key on an 
+empty input.  That is, no characters are entered before pressing the ``enter''
+\Return key.
+
+The terminal will prompt for the user's student id, and only accepts an id
+with ``{\tt860\textbackslash d\{6\}}"\footnote{You can read more about PERL
+regular
+ expressions (albeit, this C program does not use PERL) from PERL's online
+ documentation. {\tt\url{http://perldoc.perl.org/perlre.html}}
+} or ``{\tt861\textbackslash d\{6\}}."  When the user inputs an incorrect ID,
+the user will be redirected to the primary authentication screen.
+	\subsection{User Information}
+The Member\_SignIn system also likes to ask the user for information.  This is
+necessary to send said user coherent emails.
+		\subsubsection{Last Name}
+Usually, the user's last name is retrieved from a card swipe, however; this is
+not the case with a direct student ID sign in.  A database lookup will also
+reveal the user's last name.
+
+Upon entering a last name that contains non-alpha characters, the user will be
+forced to keep entering a last name until it finally makes sense.\
+\footnote{This is probably not the best way to deal with easily frustrated
+or computer-challenged users.}
+		\subsubsection{First Name}
+Usually, the user's first name is retrieved from a card swipe, however; this is
+not the case with a direct student ID sign in.  A database lookup will also
+reveal the user's first name.
+
+Upon entering a first name that contains non-alpha characters, the user will be
+forced to keep entering a first name until it finally makes sense.
+		\subsubsection{Email}
+A database lookup will usually reveal the user's email, but this is not the
+case when the user does not have an existing record.
+
+These emails specifically are limited to ucr.edu emails.  The PERL
+verification string \footnote{This program has no PERL, but PERL is the
+text processing language of choice.} should be 
+``{\tt[:alphanum:]+@[alpha]*\textbackslash .?ucr\textbackslash .edu}.''
+		\subsubsection{Member Number}
+A database lookup should reveal the user's member number, but this is not
+always the case.  The user shall be forever bothered with this unless she
+already has a member number filed with the IEEE.  This is also a useful
+feature for cross-referencing with official IEEE records.
+	\subsection{Verification}
+During this step, the user is able to change any of his or her information by
+entering the bolded characters onto the terminal.
+
+	\section{Configuration}
+The program has variables.  Go change them if something looks off.
+
+	\section{Installation}
+By this point, if this is not extraneous information, C is not an interpreted
+language.
+		\subsection{Database Configuration}
+
+		\subsection{Program Configuration}
+
+	\subsection{Dependencies}
+
+	\subsection{Compilation}
+
+\section{Troubleshooting}
+For now, your best hope is to contact your local system administrator.
+Assuming that this software is not widely distributed, just call Brandon over.
+
+In the worst-case scenario, just switch to the old member tracking method.
+
+\end{document}
+
