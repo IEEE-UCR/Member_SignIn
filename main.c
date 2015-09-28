@@ -32,8 +32,6 @@
 #include "inc/sql.h"
 #include "inc/member.h"
 
-char* mtg_description;
-
 /* Card parsing is a bit weird.
  * Beginning from line one:
  * %B<card number>^<last name>/<first name>  <all the spaces><numbers>
@@ -120,7 +118,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 	}
 
 	/* Card ID ends with a '^' and should always be sixteen characters*/
-    int cnind = 0;
+	int cnind = 0;
 	while (1) {
 		/* Tries to find the next fmt character */
 		if (fmt[fmtind] == buf[bufind] && cnind == 16) {
@@ -150,11 +148,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 			break;
 		}
 
-<<<<<<< Updated upstream
-		if (!isalpha(buf[bufind]))
-=======
 		if (!isalpha(buf[bufind]) && buf[bufind] != ' ')
->>>>>>> Stashed changes
 			return bufind;
 
 		alpha_ln[lnind++] = buf[bufind++];
@@ -162,7 +156,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 
 	/* fmtind at four */
 	/* Parse first name */
-    int fnind = 0;
+	int fnind = 0;
 	while(1) {
 		/* Try to find the next fmt character */
 		if (fmt[fmtind] == buf[bufind]) {
@@ -196,7 +190,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 	/* fmtind is at the end of fmt */
 	/* Get the SID! */
 	int sid_count = 9;
-    int sidind = 0;
+	int sidind = 0;
 	while (sid_count--) {
 		if (!isdigit(buf[bufind]))
 			return bufind;
@@ -208,7 +202,7 @@ int parse_card(member_t *member, char* buf, unsigned long long new_card)
 
 	/* Insert atoi-ish things here. */
 	member->sid = atoi(alpha_sid);
-    printf("%s", alpha_sid);
+	printf("%s", alpha_sid);
 	new_card = atoll(alpha_cn);
 
 	/* And we can ignore the rest of the card string. */
@@ -366,7 +360,7 @@ char *query_lname(char* buf, ssize_t sz)
  * Inputs: buffer, size
  * Outputs: no error conditions, strangely enough.
  */
-char* query_mtg_description(char* buf, ssize_t sz)
+void query_mtg_description(MYSQL *con, meeting_t *meeting, ssize_t sz)
 {
 	/* Screen Messages */
 	printf("\033[2J\033[H");
@@ -374,16 +368,16 @@ char* query_mtg_description(char* buf, ssize_t sz)
 	printf("Meeting description entry mode activated.\n");
 	printf("Meeting description: ");
 
-	if (!fgets(buf, sz, stdin))
+	if (!fgets(meeting->description, sz, stdin))
 		exit(1);
 
-	char *c = buf;
+	char *c = meeting->description;
 
 	while (*c++ != '\n');
-	
+
 	*(--c) = '\0';
-	
-	return buf;
+
+	meeting_update(con, meeting);
 }
 
 /* Function Name: query_fname
@@ -466,7 +460,7 @@ int sid_correct(member_t *member)
 	printf(csi_row1_message);
 	while (1) {
 		printf("Is your SID (%i) correct?. (\033[1mY\033[0m is default)"
-                " \033[1mY\033[0m/n", member->sid);
+				" \033[1mY\033[0m/n", member->sid);
 		char c;
 		c = getsinglechar();
 		if ((c & 0x5F) == 'Y') {
@@ -517,8 +511,8 @@ void information_gather(member_t *member, unsigned long long new_card)
 
 		try++;
 
-        printf("%s", card_buf);
-        printf("%i", member->sid);
+		printf("%s", card_buf);
+		printf("%i", member->sid);
 	} while (sid_verify(member) || (!sid_correct(member)));
 }
 
@@ -598,6 +592,82 @@ void card_number_verification(unsigned long long nc, member_t *member)
 	}
 }
 
+/* Function Name: query_mtg_type
+ * Description: queries the meeting type of choice.  (This is a character)
+ * Inputs: nothing much, no meeting struct yet.
+ */
+
+void query_mtg_type(MYSQL *con, meeting_t *meeting)
+{
+    printf("\033[2J\033[H");
+    printf(csi_row1_message);
+    printf("Meeting Type Query\n");
+    printf("Meeting types are as follows:\n");
+    printf("\033[1mG\033[0meneral Meetings\n");
+    printf("Simply press return if you are here by mistake.\n");
+    printf("Select the meeting type: ");
+    char c = getsinglechar(stdin);
+    if ((c & 0x5F) == 'G')
+        meeting->type = 'G';
+    else if ((c & 0x5F) == '\n')
+        meeting->type = '\0';
+    meeting_update(con, meeting);
+}
+
+/* Function Name: admin_mode_query
+ * Description: queries the admin for his wise input
+ * Inputs: meeting_t
+ * Output: void
+ */
+
+void admin_mode_query(MYSQL *con, meeting_t *meeting)
+{
+	int breakout = 0;
+	while (!breakout) {
+        meeting_recall(con, meeting);
+		printf("\033[2J\033[H");
+		printf(csi_row1_message);
+		printf("\033[1;31mUltra Secret Admin Mode\033[0m\n");
+		printf("Choose wisely from the following options:\n");
+		printf("\033[1mD\033[0mescription: ");
+		printf("%s\n", meeting->description);
+		printf("\033[1mT\033[0mype: ");
+		printf("%s\n", meeting_type_string(meeting->type));
+		printf("\033[1mR\033[0maffle generation\n");
+		printf("generate mail bcc \033[1mL\033[0mists\n");
+		printf("Enter leaves this top-secret mode.\n");
+		while (1) {
+			printf("\033[1m(D, T, R, L)\033[0m > ");
+			char c = getsinglechar(stdin);
+			if ((c & 0x5F) == 'T') {
+				query_mtg_type(con, meeting);
+				break;
+			}
+
+			if ((c & 0x5F) == 'D') {
+				query_mtg_description(con, meeting, maxbuf-1);
+				break;
+			}
+
+			if ((c & 0x5F) == 'R') {
+				/*raffle_gen();*/
+				break;
+			}
+			if ((c & 0x5F) == 'L') {
+				/*list_gen_select();*/
+				break;
+			}
+
+			if (c == '\n') {
+				breakout = 1;
+				break;
+			}
+
+			printf("\033[9HInvalid! ");
+		}
+	}
+}
+
 /* Function Name: print_member_information
  * Description: prints the member's information
  * Inputs: &member
@@ -620,11 +690,11 @@ void print_member_information(member_t *member) {
 
 /* Function Name: _confirm_change_information_helper_
  * Description: the main loop of confirm change information
- * Inputs: &member, &breakout
+ * Inputs: &mysql, &member, &meeting, &breakout
  * Output: void
  */
-static void _confirm_change_information_helper_ (member_t* member,
-        int* breakout)
+static void _confirm_change_information_helper_ (MYSQL *con,
+        member_t* member, meeting_t *meeting, int* breakout)
 {
 	while (1) {
 		printf("Press enter to continue or choose a field: ");
@@ -674,7 +744,7 @@ static void _confirm_change_information_helper_ (member_t* member,
 			break;
 		}
 		if ((c & 0x5F) == 'A' && (member->admin & 0x5F) == 'Y') {
-			query_mtg_description(mtg_description, maxbuf-1);
+			admin_mode_query(con, meeting);
 
 			break;
 		}
@@ -689,60 +759,79 @@ static void _confirm_change_information_helper_ (member_t* member,
 
 /* Function Name: confirm_change_information
  * Description: Confirm or change your information!
- * Inputs: &member
+ * Inputs: &MYSQL, &member, &meeting
  * Output: void
  */
-void confirm_change_information(member_t *member)
+void confirm_change_information(MYSQL *con, member_t *member,
+        meeting_t *meeting)
 {
 	int breakout = 0;
 	while(!breakout) {
 		print_member_information(member);
 		printf("\033[1m(L,F,E,M)\033[0m \n");
 
-		_confirm_change_information_helper_(member, &breakout);
+		_confirm_change_information_helper_(con, member, meeting, &breakout);
 
 	}
 }
 
 int main()
 {
-	mtg_description = malloc(maxbuf);
+	MYSQL *mysqlp = 0;
+
+	meeting_t meeting;
+
+	init_meeting(&meeting);
+		
+	if(!(mysqlp = mysql_init(mysqlp)))
+		exit(1);
+
+
+	if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
+				csi_mysql_password, csi_mysql_database, csi_mysql_port,
+				csi_mysql_unix_socket, csi_mysql_client_flag)) {
+		finish_with_error(mysqlp);
+	}
+
+	meeting.exists = !meeting_recall(mysqlp, &meeting);
+
+	mysql_close(mysqlp);
 
 	while (1) {
 		member_t member;
 		init_member(&member);
 
-        unsigned long long new_card = 0;
+		unsigned long long new_card = 0;
 
-        information_gather(&member, new_card);
+		information_gather(&member, new_card);
 
-        MYSQL *mysqlp = 0;
+	    MYSQL *mysqlp = 0;
 
-        if(!(mysqlp = mysql_init(mysqlp)))
-            exit(1);
+		if(!(mysqlp = mysql_init(mysqlp)))
+			exit(1);
 
-        if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
-                    csi_mysql_password, csi_mysql_database, csi_mysql_port,
-                    csi_mysql_unix_socket, csi_mysql_client_flag)) {
-            finish_with_error(mysqlp);
-        }
+		if (!mysql_real_connect(mysqlp, csi_mysql_server, csi_mysql_user,
+					csi_mysql_password, csi_mysql_database, csi_mysql_port,
+					csi_mysql_unix_socket, csi_mysql_client_flag)) {
+			finish_with_error(mysqlp);
+		}
 
-        database_check(mysqlp, &member);
+		database_check(mysqlp, &member);
 
 		information_gather2(&member);
 
 		card_number_verification(new_card, &member);
 
-		confirm_change_information(&member);
+		confirm_change_information(mysqlp, &member, &meeting);
 
 		database_entry(mysqlp, &member);
 
-	    mysql_close(mysqlp);
+		mysql_close(mysqlp);
 
 		free_member(&member);
 	}
 
-	free(mtg_description);
+	free_meeting(&meeting);
 
 	return 0;
 }

@@ -8,6 +8,7 @@
 #include <m_string.h>
 #include <string.h>
 #include "member.h"
+#include "meeting.h"
 
 extern char* mtg_description;
 
@@ -83,36 +84,90 @@ int database_entry(MYSQL *con, member_t *member)
 		finish_with_error(con);
 	}
 
-	c = (char*) strmov(string, "INSERT INTO meeting SET ");
-
-	c = (char*) strmov(c, "meeting=CURDATE(), description='");
-
-	c += mysql_real_escape_string(con, c, mtg_description,
-		strlen(mtg_description));
-
-	c = (char*) strmov(c, "', attendees='");
-
+	c = (char*) strmov(string, "UPDATE member SET"
+			" meeting_count=meeting_count+1 WHERE (sid=");
 	c += sprintf(c, "%i", member->sid);
-
-	c = (char*) strmov(c, " '");
-
-	c = (char*) strmov(c, " ON DUPLICATE KEY UPDATE ");
-
-	c = (char*) strmov(c, "meeting=CURDATE(), description='");
-
-	c += mysql_real_escape_string(con, c, mtg_description,
-		strlen(mtg_description));
-
-	c = (char*) strmov(c, "', attendees=CONCAT(attendees, '");
-
+	c = (char*) strmov(c, ") and ("
+		"(SELECT type from meeting WHERE meeting=curdate()) is not "
+		"null) and ((SELECT 1 FROM attendee WHERE meeting=curdate()"
+		" and sid=");
 	c += sprintf(c, "%i", member->sid);
+	c = (char*) strmov(c, ") is null)");
 
-	c = (char*) strmov(c, " ')");
 	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
 		finish_with_error(con);
 	}
-	
+
+	c = (char*) strmov(string, "INSERT IGNORE attendee SET "
+			"meeting=curdate(),sid=");
+	c += sprintf(c, "%i", member->sid);
+
+	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
+		finish_with_error(con);
+	}
+
 	return 0;
+}
+
+/* Function Name: meeting_recall
+ * Description: sees if there is a meeting already in place and warns if not
+ * Inputs: mysql connection, meeting_t
+ * Outputs: int: negative for error (probably not checked here), 0 for exist
+ *  1 for does not exist
+ */
+
+int meeting_recall(MYSQL *con, meeting_t *meeting)
+{
+	char string[maxquerylen], *c;	
+
+	c = (char*) strmov(string, "SELECT type,description from meeting "
+		"WHERE meeting=curdate()");
+
+	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
+		finish_with_error(con);
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+
+	if (result == NULL) {
+		finish_with_error(con);
+	}
+
+	MYSQL_ROW row = mysql_fetch_row(result);
+
+	if (!row)
+		return 1;
+
+	meeting->type = row[0] ? *row[0] : '\0';
+	strcpy(meeting->description, row[1]);
+
+	return 0;
+
+}
+
+/* Function Name: meeting_update
+ * Description: Modifies the current meeting information
+ * Inputs: mysql connection, meeting_t
+ * Outputs: void
+ */
+
+void meeting_update(MYSQL *con, meeting_t *meeting)
+{
+	char string[maxquerylen], *c;
+
+	c = (char*) strmov(string, "REPLACE INTO meeting SET meeting=curdate(),");
+	c = (char*) strmov(c, "description=\"");
+	c += mysql_real_escape_string(con, c, meeting->description,
+			strlen(meeting->description));
+    c = (char*) strmov(c, "\",type=");
+    if (isalpha(meeting->type))
+        c += sprintf(c, "'%c'", meeting->type);
+    else
+        c = (char*) strmov(c, "NULL");
+
+	if (mysql_real_query(con, string, (unsigned int) (c - string))) {
+		finish_with_error(con);
+	}
 }
 
 /* Function Name: database_check
